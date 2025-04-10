@@ -1,0 +1,6 @@
+{
+  "host": "your laptop IP",
+  "port": 5000,
+  "speech_rate": 150,
+  "speech_volume": 1.0
+}
