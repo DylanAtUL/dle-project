@@ -1,6 +1,7 @@
 {
-  "host": "your laptop IP",
+  "host": "",
   "port": 5000,
+  "data_port": 5001,
   "speech_rate": 150,
   "speech_volume": 1.0
 }

@@ -1,2 +1,4 @@
-no
-yes
+Palm
+ThumbsDown
+ThumbsUp
+Unknown

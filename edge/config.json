@@ -1,7 +1,8 @@
 {
-  "SSID": "your hotspot ssid",
-  "PASSWORD": "your hotspot ssid password",
-  "SERVER_IP": "your laptop IP",
-  "SERVER_PORT": 5000
+  "SSID": "",
+  "PASSWORD": "",
+  "SERVER_IP": "",
+  "COMMANDS_PORT": 5000,
+  "DATA_PORT": 5001
 }
 
