@@ -44,7 +44,7 @@ def speak(text):
     tts = gTTS(text=text, lang='en')
     tts.save(RESPONSE_FILE)
     os.system(f"mpg123 {RESPONSE_FILE}")
-
+    os.remove(RESPONSE_FILE)
 # ------------------ HANDLE GESTURE COMMANDS ------------------
 
 def handle_gesture_commands(server_socket, command_responses, gesture_ids):
@@ -125,17 +125,20 @@ def run_server(config):
 
     # Gesture socket
     gesture_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    gesture_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     gesture_socket.bind((host, port))
     gesture_socket.listen(1)
     print(f"Listening for gesture commands on {host}:{port}")
 
     # Telemetry socket
     telemetry_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    telemetry_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     telemetry_socket.bind((host, data_port))
     print(f"Listening for telemetry data on {host}:{data_port}")
 
     # Config update socket
     update_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    update_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     update_socket.bind((host, client_port))
     update_socket.listen(1)
     print(f"Listening for user config updates on {host}:{client_port}")
