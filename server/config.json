@@ -1,5 +1,5 @@
 {
-  "host": "192.168.192.60",
+  "host": "XXX",
   "port": 5000,
   "data_port": 5001,
   "client_port": 5002,

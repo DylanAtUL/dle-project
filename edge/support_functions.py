@@ -29,8 +29,8 @@ def buzzer_init():
 # misc parameters initialisation
 def init_params():
     return {
-        "confidence_threshold": 0.6,
-        "command_cooldown_ms": 2000,
+        "confidence_threshold": 0.9,
+        "gesture_detection_blackout_msecs": 3000,
         "last_command_time": 0
     }
 
@@ -50,6 +50,9 @@ def comms_setup(ssid, password):
     led = LED("LED_BLUE")
     led.on()
 
+    # timing init
+    initialise_time()
+
 
 def channels_setup(ip, cmd_port, d_port):
     global server_ip
@@ -60,84 +63,80 @@ def channels_setup(ip, cmd_port, d_port):
     command_port = cmd_port
     data_port = d_port
 
-def sendCommand(command, timeout=5):
+def sendCommand(command):
     try:
-        debug_print(f"Sending to {server_ip}:{command_port} → '{command}'")
-        sock = socket.socket()
-        sock.settimeout(timeout)
-        sock.connect((server_ip, command_port))
-        sock.send(command.encode())
+        debug_print(f"Sending UDP to {server_ip}:{command_port} → '{command}'")
+        cmd_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # Create UDP socket
+        cmd_socket.sendto(command.encode(), (server_ip, command_port))
+        cmd_socket.close()
 
-
-        # Try to receive a response (optional)
-        try:
-            response = sock.recv(1024)
-            response_str = response.decode()
-            debug_print("Got response:", response_str) # assume good
-            play_good_tone()
-        except:
-            response_str = ""
-            debug_print("No response received.")
-
-        sock.close()
-        return response_str
+        play_good_tone()
+        return "OK"
 
     except Exception as e:
         debug_print("sendCommand failed:", e)
         play_bad_tone()
         return None
 
+
 def sendData(data):
     global server_ip
     global data_port
+
+    timestamped_data = debug_print(data)
+
     if SEND_DATA:
         try:
-            debug_print(f"Sending data to {server_ip}:{data_port} → '{data}'")
+            # debug_print(f"Sending data to {server_ip}:{data_port} → '{data}'")
             data_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            data_socket.sendto(data.encode(), (server_ip, data_port))
+            data_socket.sendto(timestamped_data.encode(), (server_ip, data_port))
+            data_socket.close()
         except Exception as e:
             debug_print("sendData failed:", e)
 
-def init_sensor():
+def init_sensor(window_size):
     sensor.reset()                         # Reset and initialize the sensor
     sensor.set_pixformat(sensor.RGB565)    # Set pixel format to RGB565 (or GRAYSCALE)
     sensor.set_framesize(sensor.QVGA)      # Set frame size to QVGA (320x240)
-    sensor.set_windowing((240, 240))       # Set 240x240 window
+    sensor.set_windowing((window_size, window_size))       # Set 240x240 window
     sensor.skip_frames(time=2000)          # Let the camera adjust
+    sensor.set_auto_gain(False)
+
     debug_print("Sensor initialized")
 
 def load_model_and_labels(model_path="trained.tflite", label_path="labels.txt", safety_buffer_kb=64):
     model_size = uos.stat(model_path)[6]
-    mem_free_before = gc.mem_free()
+    fb_available = 32 * 1024 * 1024  # 32MB framebuffer SDRAM
 
-    # ✅ Fixed condition: load to RAM only if it fits safely
-    load_to_fb = model_size < (mem_free_before - (safety_buffer_kb * 1024))
+    # ✅ Correct condition: Check against framebuffer capacity
+    load_to_fb = model_size < (fb_available - (safety_buffer_kb * 1024))
     location = "RAM (framebuffer)" if load_to_fb else "Flash (on demand)"
 
-    sendData("Model size: %d bytes" % model_size)
-    sendData("Free RAM before load: %d bytes" % mem_free_before)
-    sendData(f"Loading model into:{location}")
+    sendData(f"Model size: {model_size} bytes")
+    sendData(f"Framebuffer available: {fb_available} bytes")
+    sendData(f"Loading model into: {location}")
+
+    gc.collect()
+    start_mem = gc.mem_free()
+    net = ml.Model(model_path, load_to_fb=False)  # Force heap allocation
+    gc.collect()
+    end_mem = gc.mem_free()
+    sendData(f"Heap used: {start_mem - end_mem} bytes")
 
     net = ml.Model(model_path, load_to_fb=load_to_fb)
 
-    gc.collect()
-    mem_free_after = gc.mem_free()
-    mem_used = mem_free_before - mem_free_after
+    # No need for gc.collect() here – framebuffer usage doesn't affect heap
+    sendData("Model loaded successfully")
 
-    sendData("Free RAM after load: %d bytes" % mem_free_after)
-    sendData("RAM used for model: %d bytes" % mem_used)
-    data = "Model loaded successfully"
-    sendData(data)
-    debug_print(data)
-
+    # Label loading logic (unchanged)
     try:
         with open(label_path, "r") as f:
             labels = [line.strip() for line in f if line.strip()]
-        debug_print("Loaded %d labels from %s" % (len(labels), label_path))
     except Exception as e:
-        raise Exception("Failed to load labels file '%s': %s" % (label_path, e))
+        raise Exception(f"Failed to load labels: {e}")
 
     return net, labels
+
 
 def load_config(path="./config.json"):
     try:
@@ -146,7 +145,7 @@ def load_config(path="./config.json"):
     except Exception as e:
         raise Exception("Failed to load config.json: " + str(e))
 
-    required_keys = ["SSID", "PASSWORD", "SERVER_IP", "COMMANDS_PORT", "DATA_PORT"]
+    required_keys = ["SSID", "PASSWORD", "SERVER_IP", "COMMANDS_PORT", "DATA_PORT", "WINDOW_SIZE"]
     for key in required_keys:
         if key not in config:
             raise Exception(f"Missing '{key}' in config.json")
@@ -154,15 +153,7 @@ def load_config(path="./config.json"):
     return config
 
 def send_inference_data(data):
-    debug_print(data)
     sendData(data)
-
-def send_telemetry_data():
-
-    telemetry_data = "Memory usage: XX, Power/Battery data: YY"
-    debug_print(telemetry_data)
-    sendData(telemetry_data)
-
 
 def initialise_time():
     # Set NTP server to Ireland pool
@@ -184,7 +175,7 @@ def initialise_time():
         rtc = RTC()
         rtc.datetime((irish_time[0], irish_time[1], irish_time[2], 0, irish_time[3], irish_time[4], irish_time[5], 0))
 
-        print("Current time in Ireland:", rtc.datetime())
+        print("Current time:", rtc.datetime())
     except Exception as e:
         print(f"Failed to get time from NTP server - {e}")
 
@@ -224,4 +215,17 @@ def read_battery_voltage():
 
 def debug_print(*args, **kwargs):
     if DEBUG_PRINT:
-        print(*args, **kwargs)
+        # Create timestamp with milliseconds
+        now = time.localtime()
+        ms = time.ticks_ms() % 1000  # Get current milliseconds
+        timestamp = "[{:02d}:{:02d}:{:02d}.{:03d}]".format(now[3], now[4], now[5], ms)
+
+        # Format all arguments into a single string
+        content = " ".join(str(arg) for arg in args)
+        message = f"{timestamp} {content}"
+
+        print(message, **kwargs)
+
+        return message  # <-- Return full message string
+    return None
+

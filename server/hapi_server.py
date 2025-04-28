@@ -50,25 +50,17 @@ def speak(text):
 def handle_gesture_commands(server_socket, command_responses, gesture_ids):
     palm_status = False
     while True:
-        client_socket, client_address = server_socket.accept()
-        print("Connection from:", client_address)
+        command, client_address = server_socket.recvfrom(1024)
+        command = command.decode("utf-8").strip()
+        print("Received from:", client_address)
 
-        try:
-            command = client_socket.recv(1024).decode("utf-8").strip()
-            if not command:
-                print("Empty command.")
-                continue
+        if not command:
+            print("Empty command.")
+        else:
             print("Received command:", command)
             response = command_responses.get(command, f"Gesture '{command}' not recognized.")
             print("Speaking:", response)
             speak(response)
-
-        except Exception as e:
-            print("Error handling command:", e)
-
-        finally:
-            client_socket.close()
-            print("Connection closed.\n")
 
 # ------------------ HANDLE TELEMETRY ------------------
 
@@ -124,11 +116,11 @@ def run_server(config):
     command_responses = load_command_responses()
 
     # Gesture socket
-    gesture_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    gesture_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     gesture_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     gesture_socket.bind((host, port))
-    gesture_socket.listen(1)
-    print(f"Listening for gesture commands on {host}:{port}")
+    print(f"Listening for gesture commands (UDP) on {host}:{port}")
+
 
     # Telemetry socket
     telemetry_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
