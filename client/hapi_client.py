@@ -126,7 +126,7 @@ root.title("Gesture Command Setup")
 root.geometry("900x520")
 root.resizable(False, False)
 
-title = tk.Label(root, text="Hapi Setup", font=("Arial", 16, "bold"))
+title = tk.Label(root, text="Hapi Client Setup", font=("Arial", 16, "bold"))
 title.pack(pady=10)
 
 top_frame = tk.Frame(root)
